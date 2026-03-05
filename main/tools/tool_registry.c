@@ -4,6 +4,7 @@
 #include "tools/tool_get_time.h"
 #include "tools/tool_files.h"
 #include "tools/tool_cron.h"
+#include "tools/tool_gpio_ctl.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -175,6 +176,42 @@ esp_err_t tool_registry_init(void)
         .execute = tool_cron_remove_execute,
     };
     register_tool(&cr);
+
+    /* Register gpio_control */
+    static mimi_tool_t tool_gpio = {
+        .name = "gpio_control",
+        .description = "Control GPIO pins to output high or low levels. Use this to turn lights on/off, control relays, or any digital output devices.",
+        .input_schema_json = 
+            "{"
+                "\"type\":\"object\","
+                "\"properties\":{"
+                    "\"pin\":{"
+                        "\"type\":\"integer\","
+                        "\"description\":\"GPIO pin number to control (0-48 for ESP32-S3)\","
+                        "\"minimum\":0,"
+                        "\"maximum\":48"
+                    "},"
+                    "\"state\":{"
+                        "\"type\":\"string\","
+                        "\"description\":\"Desired state: 'on'/'high'/'1' for high level, 'off'/'low'/'0' for low level\","
+                        "\"enum\":[\"on\",\"off\",\"high\",\"low\",\"1\",\"0\"]"
+                    "},"
+                    "\"active_low\":{"
+                        "\"type\":\"boolean\","
+                        "\"description\":\"Optional: If true, 'on' means low level and 'off' means high level (for active-low circuits)\","
+                        "\"default\":false"
+                    "},"
+                    "\"auto_init\":{"
+                        "\"type\":\"boolean\","
+                        "\"description\":\"Optional: Automatically initialize the GPIO pin as output if not already configured\","
+                        "\"default\":true"
+                    "}"
+                "},"
+                "\"required\":[\"pin\",\"state\"]"
+            "}",
+        .execute = tool_gpio_control_execute,
+    };
+    register_tool(&tool_gpio);
 
     build_tools_json();
 
