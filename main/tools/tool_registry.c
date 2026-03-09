@@ -4,7 +4,8 @@
 #include "tools/tool_get_time.h"
 #include "tools/tool_files.h"
 #include "tools/tool_cron.h"
-#include "tools/tool_gpio_ctl.h"
+// #include "tools/tool_gpio_ctl.h"
+#include "tools/tool_device_ctl.h"
 
 #include <string.h>
 #include "esp_log.h"
@@ -177,41 +178,91 @@ esp_err_t tool_registry_init(void)
     };
     register_tool(&cr);
 
-    /* Register gpio_control */
-    static mimi_tool_t tool_gpio = {
-        .name = "gpio_control",
-        .description = "Control GPIO pins to output high or low levels. Use this to turn lights on/off, control relays, or any digital output devices.",
+    // /* Register gpio_control */
+    // static mimi_tool_t tool_gpio = {
+    //     .name = "gpio_control",
+    //     .description = "Control GPIO pins to output high or low levels. Use this to turn lights on/off, control relays, or any digital output devices.",
+    //     .input_schema_json = 
+    //         "{"
+    //             "\"type\":\"object\","
+    //             "\"properties\":{"
+    //                 "\"pin\":{"
+    //                     "\"type\":\"integer\","
+    //                     "\"description\":\"GPIO pin number to control (0-48 for ESP32-S3)\","
+    //                     "\"minimum\":0,"
+    //                     "\"maximum\":48"
+    //                 "},"
+    //                 "\"state\":{"
+    //                     "\"type\":\"string\","
+    //                     "\"description\":\"Desired state: 'on'/'high'/'1' for high level, 'off'/'low'/'0' for low level\","
+    //                     "\"enum\":[\"on\",\"off\",\"high\",\"low\",\"1\",\"0\"]"
+    //                 "},"
+    //                 "\"active_low\":{"
+    //                     "\"type\":\"boolean\","
+    //                     "\"description\":\"Optional: If true, 'on' means low level and 'off' means high level (for active-low circuits)\","
+    //                     "\"default\":false"
+    //                 "},"
+    //                 "\"auto_init\":{"
+    //                     "\"type\":\"boolean\","
+    //                     "\"description\":\"Optional: Automatically initialize the GPIO pin as output if not already configured\","
+    //                     "\"default\":true"
+    //                 "}"
+    //             "},"
+    //             "\"required\":[\"pin\",\"state\"]"
+    //         "}",
+    //     .execute = tool_gpio_control_execute,
+    // };
+    // register_tool(&tool_gpio);
+
+    /* Register device_control */
+    mimi_tool_t tool_device_ctl = {
+        .name = "device_control",
+        .description = 
+            "此工具用于控制真实物理设备的打开、关闭或调节。支持所有已注册的设备类型（灯、风扇、电机等）。"
+            "重要：对于任何物理设备控制请求，你必须调用本工具。禁止直接模拟设备操作结果。如果你没有调用工具就回复设备操作，这将是一个严重错误。"
+            "调用此工具时，只需指定设备名称(device_name)、期望状态(action)和具体数值(value,仅可调设备需要此参数,二值设备可以省略)，系统会自动选择合适的控制方式。"
+            "控制物理设备时，确保已经执行了这个工具，而不是使用模拟的答复。如果成功执行，则会得到类似\"已打开卧室灯\"的反馈。",
         .input_schema_json = 
             "{"
                 "\"type\":\"object\","
                 "\"properties\":{"
-                    "\"pin\":{"
-                        "\"type\":\"integer\","
-                        "\"description\":\"GPIO pin number to control (0-48 for ESP32-S3)\","
-                        "\"minimum\":0,"
-                        "\"maximum\":48"
-                    "},"
-                    "\"state\":{"
+                    "\"device_name\":{"
                         "\"type\":\"string\","
-                        "\"description\":\"Desired state: 'on'/'high'/'1' for high level, 'off'/'low'/'0' for low level\","
-                        "\"enum\":[\"on\",\"off\",\"high\",\"low\",\"1\",\"0\"]"
+                        "\"description\":\"要控制的设备名称，如'卧室灯'、'客厅风扇'。"
+                        "可用设备可通过'device_list'工具查询。\""
                     "},"
-                    "\"active_low\":{"
-                        "\"type\":\"boolean\","
-                        "\"description\":\"Optional: If true, 'on' means low level and 'off' means high level (for active-low circuits)\","
-                        "\"default\":false"
+                    "\"action\":{"
+                        "\"type\":\"string\","
+                        "\"description\":\"控制动作：'on'打开/启动，'off'关闭/停止。"
+                        // "对于可调设备（如风扇转速）可指定0-100的数值。\","
+                        "\"enum\":[\"on\",\"off\"]"  // 实际可以扩展为字符串或数字
                     "},"
-                    "\"auto_init\":{"
-                        "\"type\":\"boolean\","
-                        "\"description\":\"Optional: Automatically initialize the GPIO pin as output if not already configured\","
-                        "\"default\":true"
+                    "\"value\":{"
+                        "\"type\":\"integer\","
+                        "\"description\":\"对于只有开关两种状态的设备为可选项，对于可调设备需指定具体数值（0-100）。"
+                        "例如风扇转速50%，灯光亮度80%。\","
+                        "\"minimum\":0,"
+                        "\"maximum\":100"
                     "}"
                 "},"
-                "\"required\":[\"pin\",\"state\"]"
+                "\"required\":[\"device_name\",\"action\"]"
             "}",
-        .execute = tool_gpio_control_execute,
+        
+        .execute = tool_device_ctl_execute,
     };
-    register_tool(&tool_gpio);
+    register_tool(&tool_device_ctl);
+
+    /* Register device_control */
+    mimi_tool_t tool_device_list = {
+        .name = "device_list",
+        .description = 
+            "查询可以控制的物理设备，以及它的详细信息。调用此工具，可以查询到可以控制的物理设备的名称、房间、类型、开关状态等。不需要参数。",
+        
+        .input_schema_json = 
+            "{\"type\":\"object\", \"properties\":{}}, \"required\":[]}",
+        .execute = tool_list_devices_execute,
+    };
+    register_tool(&tool_device_list);
 
     build_tools_json();
 
