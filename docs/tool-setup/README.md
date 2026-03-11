@@ -2,6 +2,10 @@
 
 Configuration guides for MimiClaw's external service integrations.
 
+Related local setup guide:
+
+- [Wi-Fi AP Onboarding Guide](../WIFI_ONBOARDING_AP.md) — configure firmware builds that expose the local `MimiClaw-XXXX` onboarding/admin access point
+
 ## Guides
 
 | Guide | Service | Description |

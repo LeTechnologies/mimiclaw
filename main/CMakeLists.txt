@@ -23,6 +23,7 @@ idf_component_register(
         "tools/tool_gpio_ctl.c"
         "tools/tool_device_ctl.c"
         "skills/skill_loader.c"
+        "onboard/wifi_onboard.c"
     INCLUDE_DIRS
         "."
     REQUIRES

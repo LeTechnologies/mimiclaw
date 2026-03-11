@@ -528,6 +528,32 @@ static void print_config(const char *label, const char *ns, const char *key,
     }
 }
 
+static void print_config_u16(const char *label, const char *ns, const char *key,
+                             const char *build_val)
+{
+    char nvs_val[16] = {0};
+    const char *source = "not set";
+    const char *display = "(empty)";
+
+    nvs_handle_t nvs;
+    if (nvs_open(ns, NVS_READONLY, &nvs) == ESP_OK) {
+        uint16_t value = 0;
+        if (nvs_get_u16(nvs, key, &value) == ESP_OK && value > 0) {
+            snprintf(nvs_val, sizeof(nvs_val), "%u", (unsigned)value);
+            source = "NVS";
+            display = nvs_val;
+        }
+        nvs_close(nvs);
+    }
+
+    if (strcmp(source, "not set") == 0 && build_val[0] != '\0') {
+        source = "build";
+        display = build_val;
+    }
+
+    printf("  %-14s: %s  [%s]\n", label, display, source);
+}
+
 static int cmd_config_show(int argc, char **argv)
 {
     printf("=== Current Configuration ===\n");
@@ -538,7 +564,7 @@ static int cmd_config_show(int argc, char **argv)
     print_config("Model",      MIMI_NVS_LLM,    MIMI_NVS_KEY_MODEL,    MIMI_SECRET_MODEL,      false);
     print_config("Provider",   MIMI_NVS_LLM,    MIMI_NVS_KEY_PROVIDER, MIMI_SECRET_MODEL_PROVIDER, false);
     print_config("Proxy Host", MIMI_NVS_PROXY,  MIMI_NVS_KEY_PROXY_HOST, MIMI_SECRET_PROXY_HOST, false);
-    print_config("Proxy Port", MIMI_NVS_PROXY,  MIMI_NVS_KEY_PROXY_PORT, MIMI_SECRET_PROXY_PORT, false);
+    print_config_u16("Proxy Port", MIMI_NVS_PROXY, MIMI_NVS_KEY_PROXY_PORT, MIMI_SECRET_PROXY_PORT);
     print_config("Search Key", MIMI_NVS_SEARCH, MIMI_NVS_KEY_API_KEY,  MIMI_SECRET_SEARCH_KEY, true);
     print_config("Tavily Key", MIMI_NVS_SEARCH, MIMI_NVS_KEY_TAVILY_KEY, MIMI_SECRET_TAVILY_KEY, true);
     printf("=============================\n");
