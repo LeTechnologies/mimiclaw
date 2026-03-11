@@ -6,6 +6,7 @@
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "driver/uart.h"
+#include "led_strip.h"
 #include "tool_device_ctl.h"
 
 static const char *TAG = "tool_device_ctl";
@@ -44,12 +45,11 @@ const char *DEVICE_CONFIG_JSON =
             "\"name\": \"床头灯\","
             "\"room\": \"卧室\","
             "\"type\": \"light\","
-            "\"interface\": \"gpio\","
+            "\"interface\": \"led_strip\","
             "\"config\": {"
-                "\"pin\": 5,"
-                "\"active_low\": false"
+                "\"pin\": 5"
             "},"
-            "\"description\": \"床头阅读灯\""
+            "\"description\": \"床头阅读灯（给value参数传入十六进制RGB控制颜色）\""
         "},"
         "{"
             "\"name\": \"窗帘电机\","
@@ -96,6 +96,7 @@ typedef enum {
     CTRL_INTERFACE_PWM,          // PWM输出
     CTRL_INTERFACE_I2C,          // I2C设备
     CTRL_INTERFACE_UART,         // 串口设备
+    CTRL_INTERFACE_LED_STRIP,      // RGB灯
     // CTRL_INTERFACE_ONEWIRE,      // 单总线设备
     INTERFACE_UNKNOWN
 } interface_type_t;
@@ -135,6 +136,11 @@ typedef struct {
             uint8_t rx;
             uint8_t tx;
         } uart;
+
+        struct {
+            uint8_t pin; 
+            led_strip_handle_t led_strip;
+        } led_strip;
         
     } config;
     
@@ -215,10 +221,12 @@ static esp_err_t device_list_init(void)
                 dev->interface = CTRL_INTERFACE_GPIO;
             } else if (strcmp(interface_str->valuestring, "pwm") == 0) {
                 dev->interface = CTRL_INTERFACE_PWM;
-            } else if (strcmp(interface_str->valuestring, "I2C") == 0) {
+            } else if (strcmp(interface_str->valuestring, "i2c") == 0) {
                 dev->interface = CTRL_INTERFACE_I2C;
-            } else if (strcmp(interface_str->valuestring, "UART") == 0) {
+            } else if (strcmp(interface_str->valuestring, "uart") == 0) {
                 dev->interface = CTRL_INTERFACE_UART;
+            } else if (strcmp(interface_str->valuestring, "led_strip") == 0) {
+                dev->interface = CTRL_INTERFACE_LED_STRIP;
             // } else if (strcmp(interface_str->valuestring, "ONEWIRE") == 0) {
             //     dev->interface = CTRL_INTERFACE_ONEWIRE;
             } else {
@@ -286,6 +294,21 @@ static esp_err_t device_list_init(void)
 
                 // here to init uart
 
+            } else if (dev->interface == CTRL_INTERFACE_LED_STRIP) {
+                cJSON *pin = cJSON_GetObjectItem(config, "pin");
+
+                if (pin) dev->config.led_strip.pin = pin->valueint;
+
+                led_strip_config_t strip_config = {
+                    .strip_gpio_num = dev->config.led_strip.pin,
+                    .max_leds = 1,
+                };
+                led_strip_rmt_config_t rmt_config = {
+                    .resolution_hz = 10 * 1000000, // 10MHz
+                    .flags.with_dma = false,
+                };
+                ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &dev->config.led_strip.led_strip));
+
             // } else if (dev->interface == CTRL_INTERFACE_ONEWIRE) {
 
             }
@@ -328,7 +351,7 @@ static device_info_t *device_list_find_by_name(const char *name)
     return NULL;
 }
 
-// ==================== 底层硬件控制函数（模拟） ====================
+// ==================== 底层硬件控制函数 ====================
 
 /**
  * @brief GPIO控制
@@ -359,6 +382,25 @@ static esp_err_t pwm_control(int pin, int duty, int freq)
     
     // TODO: 调用实际的硬件驱动
     // ledc_set_duty_and_frequency(...);
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief LED_STRIP控制
+ */
+static esp_err_t led_strip_control(int pin, led_strip_handle_t led_strip, bool state, int color)
+{
+    ESP_LOGI(TAG, "LED_STRIP控制: pin=%d, state=%d, color=%d", pin, state, color);
+    if (false == state)
+        led_strip_clear(led_strip);
+    else {
+        // hex_color == 0xRRGGBB;
+        uint8_t r = (color >> 16) & 0xFF;
+        uint8_t g = (color >> 8) & 0xFF;
+        uint8_t b = color & 0xFF;
+        led_strip_set_pixel(led_strip, 0, r, g, b);
+    }
     
     return ESP_OK;
 }
@@ -530,11 +572,31 @@ esp_err_t tool_device_ctl_execute(const char *input_json, char *output, size_t o
         }
         
         case CTRL_INTERFACE_I2C: {
-
+            
         }
 
         case CTRL_INTERFACE_UART: {
 
+        }
+
+        case CTRL_INTERFACE_LED_STRIP: {
+            int color = 0;
+            if (target_state && value && cJSON_IsNumber(value)) {
+                color = value->valueint;
+            } else if (target_state) {
+                color = 0xFFFFFF;
+            }
+
+            result = led_strip_control(dev->config.led_strip.pin, dev->config.led_strip.led_strip, target_state, color);
+            if (result == ESP_OK) {
+                dev->is_on = target_state;
+                dev->value = color;
+                snprintf(result_msg, sizeof(result_msg), "已将 %s 设置为 %X (GPIO%d)", dev->name, (unsigned int)dev->value, dev->config.led_strip.pin);
+                ESP_LOGI(TAG, "已将 %s 设置为 %X (GPIO%d)", dev->name, dev->value, dev->config.led_strip.pin);
+            } else {
+                ESP_LOGW(TAG, "无法设置 %s (GPIO%d)", dev->name, dev->config.led_strip.pin);
+            }
+            break;
         }
 
         // case CTRL_INTERFACE_ONEWIRE: {
